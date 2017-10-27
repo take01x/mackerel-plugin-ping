@@ -20,6 +20,7 @@ type PingPlugin struct {
 	Count       int
 	WaitTime    int
 	AcceptCount int
+	ipv6        bool
 }
 
 func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
@@ -84,14 +85,14 @@ func validate(ipAddr string) bool {
 	return r.MatchString(ipAddr)
 }
 
-func parseHostsString(optHost string, strict ...string) ([]string, []string, error) {
+func parseHostsString(optHost string, ipv6 bool, strict ...string) ([]string, []string, error) {
 	hosts := strings.Split(optHost, ",")
 	ips, labels := make([]string, len(hosts)), make([]string, len(hosts))
 
 	for i := 0; i < len(hosts); i++ {
-		v := strings.SplitN(hosts[i], ":", 2)
-		if !validate(v[0]) {
-			ip, err := net.ResolveIPAddr("ip4", v[0])
+		v := strings.SplitN(hosts[i], "_", 2)
+		if (ipv6) {
+			ip, err := net.ResolveIPAddr("ip6", v[0])
 			if err != nil {
 				if strict[0] != "" {
 					return nil, nil, err
@@ -100,9 +101,20 @@ func parseHostsString(optHost string, strict ...string) ([]string, []string, err
 			}
 			ips[i] = ip.String()
 		} else {
-			ips[i] = v[0]
+			v := strings.SplitN(hosts[i], ":", 2)
+			if !validate(v[0]) {
+				ip, err := net.ResolveIPAddr("ip4", v[0])
+				if err != nil {
+					if strict[0] != "" {
+						return nil, nil, err
+					}
+					continue
+				}
+				ips[i] = ip.String()
+			} else {
+				ips[i] = v[0]
+			}
 		}
-
 		if len(v) == 2 {
 			labels[i] = v[1]
 		} else {
@@ -114,14 +126,15 @@ func parseHostsString(optHost string, strict ...string) ([]string, []string, err
 }
 
 func main() {
-	optHost := flag.String("host", "127.0.0.1:localhost", "IP Address[:Metric label],IP[:Label],...")
+	optHost := flag.String("host", "127.0.0.1;localhost", "IP Address[;Metric label],IP[;Label],...")
 	optTempfile := flag.String("tempfile", "", "Temp file name")
 	optCount := flag.Int("count", 1, "Sending (and receiving) count ping packets.")
 	optWaitTime := flag.Int("waittime", 1000, "Wait time, Max RTT(ms)")
 	optAcceptCount := flag.Int("acceptmiss", 0, "Accept out of wait time count ping packets.")
+	optIPv6 := flag.Bool("6", false, "Enable IPv6.")
 	flag.Parse()
 
-	hosts, labels, err := parseHostsString(*optHost, os.Getenv("MACKEREL_AGENT_PLUGIN_META"))
+	hosts, labels, err := parseHostsString(*optHost, *optIPv6, os.Getenv("MACKEREL_AGENT_PLUGIN_META"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err.Error())
 		os.Exit(1)
@@ -133,6 +146,7 @@ func main() {
 	pp.Count = *optCount
 	pp.WaitTime = *optWaitTime
 	pp.AcceptCount = *optAcceptCount
+	pp.ipv6 = *optIPv6
 
 	helper := mp.NewMackerelPlugin(pp)
 
