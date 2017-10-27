@@ -76,7 +76,7 @@ func (pp PingPlugin) GraphDefinition() map[string](mp.Graphs) {
 }
 
 func escapeHostName(host string) string {
-	return strings.Replace(host, ".", "_", -1)
+	return strings.Replace(strings.Replace(host, ".", "_", -1), ":", "_", -1)
 }
 
 func validate(ipAddr string) bool {
@@ -84,14 +84,18 @@ func validate(ipAddr string) bool {
 	return r.MatchString(ipAddr)
 }
 
-func parseHostsString(optHost string, strict ...string) ([]string, []string, error) {
+func parseHostsString(optHost string, ipv6 bool, strict ...string) ([]string, []string, error) {
 	hosts := strings.Split(optHost, ",")
 	ips, labels := make([]string, len(hosts)), make([]string, len(hosts))
 
 	for i := 0; i < len(hosts); i++ {
 		v := strings.SplitN(hosts[i], ":", 2)
-		if !validate(v[0]) {
-			ip, err := net.ResolveIPAddr("ip4", v[0])
+		if strings.Count(hosts[i], ":") >= 2 {
+			r := regexp.MustCompile(`\[(.*)\](.*)`)
+			v = []string{r.ReplaceAllString(hosts[i], "$1"), strings.Replace(r.ReplaceAllString(hosts[i], "$2"), ":", "", 1)}
+		}
+		if ipv6 {
+			ip, err := net.ResolveIPAddr("ip6", v[0])
 			if err != nil {
 				if strict[0] != "" {
 					return nil, nil, err
@@ -100,10 +104,20 @@ func parseHostsString(optHost string, strict ...string) ([]string, []string, err
 			}
 			ips[i] = ip.String()
 		} else {
-			ips[i] = v[0]
+			if !validate(v[0]) {
+				ip, err := net.ResolveIPAddr("ip4", v[0])
+				if err != nil {
+					if strict[0] != "" {
+						return nil, nil, err
+					}
+					continue
+				}
+				ips[i] = ip.String()
+			} else {
+				ips[i] = v[0]
+			}
 		}
-
-		if len(v) == 2 {
+		if len(v) == 2 && v[1] != "" {
 			labels[i] = v[1]
 		} else {
 			labels[i] = v[0]
@@ -119,9 +133,10 @@ func main() {
 	optCount := flag.Int("count", 1, "Sending (and receiving) count ping packets.")
 	optWaitTime := flag.Int("waittime", 1000, "Wait time, Max RTT(ms)")
 	optAcceptCount := flag.Int("acceptmiss", 0, "Accept out of wait time count ping packets.")
+	optIPv6 := flag.Bool("6", false, "Enable IPv6.")
 	flag.Parse()
 
-	hosts, labels, err := parseHostsString(*optHost, os.Getenv("MACKEREL_AGENT_PLUGIN_META"))
+	hosts, labels, err := parseHostsString(*optHost, *optIPv6, os.Getenv("MACKEREL_AGENT_PLUGIN_META"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err.Error())
 		os.Exit(1)
