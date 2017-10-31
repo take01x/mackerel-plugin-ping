@@ -35,6 +35,8 @@ func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
 	}
 
 	for _, host := range pp.Hosts {
+		total[escapeHostName(host)] = -1
+		count[escapeHostName(host)] = 0
 		pinger.AddIP(host)
 	}
 
@@ -49,6 +51,8 @@ func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
 	for k, v := range total {
 		if count[k] >= (pp.Count - pp.AcceptCount) {
 			stat[k] = v / float64(count[k])
+		} else {
+			stat[k] = -1.0
 		}
 	}
 
