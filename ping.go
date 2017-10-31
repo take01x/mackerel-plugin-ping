@@ -20,6 +20,7 @@ type PingPlugin struct {
 	Count       int
 	WaitTime    int
 	AcceptCount int
+	SourceIP    string
 }
 
 func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
@@ -41,6 +42,9 @@ func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
 	}
 
 	pinger.MaxRTT = time.Millisecond * time.Duration(pp.WaitTime)
+	if pp.SourceIP != "" {
+		pinger.Source(pp.SourceIP)
+	}
 
 	for i := 0; i < pp.Count; i++ {
 		err := pinger.Run()
@@ -138,6 +142,7 @@ func main() {
 	optWaitTime := flag.Int("waittime", 1000, "Wait time, Max RTT(ms)")
 	optAcceptCount := flag.Int("acceptmiss", 0, "Accept out of wait time count ping packets.")
 	optIPv6 := flag.Bool("6", false, "Enable IPv6.")
+	optSourceIP := flag.String("source", "", "Source IP Address. If the IP Address is invalid, it will be ignored.")
 	flag.Parse()
 
 	hosts, labels, err := parseHostsString(*optHost, *optIPv6, os.Getenv("MACKEREL_AGENT_PLUGIN_META"))
@@ -152,6 +157,7 @@ func main() {
 	pp.Count = *optCount
 	pp.WaitTime = *optWaitTime
 	pp.AcceptCount = *optAcceptCount
+	pp.SourceIP = *optSourceIP
 
 	helper := mp.NewMackerelPlugin(pp)
 
