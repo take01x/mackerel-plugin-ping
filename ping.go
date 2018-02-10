@@ -36,7 +36,7 @@ func (pp PingPlugin) FetchMetrics() (map[string]interface{}, error) {
 	}
 
 	for _, host := range pp.Hosts {
-		total[escapeHostName(host)] = -1
+		total[escapeHostName(host)] = 0
 		count[escapeHostName(host)] = 0
 		pinger.AddIP(host)
 	}
